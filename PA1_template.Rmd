@@ -1,0 +1,94 @@
+---
+title: "RepRes Project 1"
+author: "Anthony Carter"
+date: "6 January 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import dataset
+```{r echo=TRUE}
+URL<-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+library(downloader) #for https
+download(URL,"tmp.zip") #download
+unzip("tmp.zip") #unzip
+activity<-read.csv("activity.csv") 
+```
+
+# Total steps by day
+```{r echo=TRUE}
+total.steps <- tapply(activity$steps, activity$date, FUN=sum, na.rm=TRUE)
+hist(total.steps,breaks=8)
+
+library(ggplot2)
+qplot(total.steps, binwidth=1000, xlab="total number of steps taken each day")
+```
+
+# Average Steps
+```{r echo=TRUE}
+mean(total.steps, na.rm=TRUE)
+median(total.steps, na.rm=TRUE)
+
+ave.steps <- aggregate(x=list(steps=activity$steps), by=list(interval=activity$interval),FUN=mean, na.rm=TRUE)
+ggplot(data=ave.steps, aes(x=interval, y=steps)) +
+  geom_line() +
+  xlab("5-minute interval") +
+  ylab("average number of steps taken")
+```
+
+
+The period with highest average number of steps is:
+```{r echo=TRUE}
+ave.steps[which.max(ave.steps$steps),]
+```
+
+# Deal with NAs
+```{r echo=TRUE}
+na.steps <- is.na(activity$steps)
+
+table(na.steps)
+
+na.replace <- function(steps, interval) {
+  filled <- NA
+  if (!is.na(steps))
+    filled <- c(steps)
+  else
+    filled <- (ave.steps[ave.steps$interval==interval, "steps"])
+  return(filled)
+}
+imputed.steps <- activity
+imputed.steps$steps <- mapply(na.replace, imputed.steps$steps, imputed.steps$interval)
+```
+
+And comparing with no replacement with NAs, we see in particular a reduction in days with very low number of steps - days with many NAs will tend towards the average due to the imputation used.
+
+```{r echo=TRUE}
+total.steps <- tapply(imputed.steps$steps, imputed.steps$date, FUN=sum)
+qplot(total.steps, binwidth=1000, xlab="total number of steps taken each day, NAs imputed")
+mean(total.steps)
+median(total.steps)
+```
+
+# Investigating weekends
+Here, days of the week are classified as weekday or weeked, then these differrent types of day are compared.
+```{r echo=TRUE}
+dayStatus <- function(date) {
+  day <- weekdays(date)
+  if (day %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"))
+    return("weekday")
+  else if (day %in% c("Saturday", "Sunday"))
+    return("weekend")
+  else
+    stop("invalid date")
+}
+imputed.steps$date <- as.Date(imputed.steps$date)
+imputed.steps$day <- sapply(imputed.steps$date, FUN=dayStatus)
+
+ave.steps <- aggregate(steps ~ interval + day, data=imputed.steps, mean)
+ggplot(ave.steps, aes(interval, steps)) + geom_line() + facet_grid(day ~ .) + xlab("5-minute interval") + ylab("Number of steps")
+```
+
+Weekends show a more consistend trace though the day, while weekdays have a higher, morning peak.
